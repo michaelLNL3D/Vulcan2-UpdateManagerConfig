@@ -4,3 +4,11 @@ CLAUDE.md
 
 # Project memory / routing files
 .mex/
+
+# macOS metadata
+.DS_Store
+
+# Local distribution-prep artifacts
+docs/
+scripts/
+tests/
