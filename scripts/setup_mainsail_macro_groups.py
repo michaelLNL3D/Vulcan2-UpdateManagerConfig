@@ -37,6 +37,7 @@ GROUPS = {
     "Filament": [
         "LOAD_FILAMENT",
         "UNLOAD_FILAMENT",
+        "M600",
     ],
     "Probe & Calibration": [
         "PROBE_PICKUP",
@@ -58,6 +59,7 @@ GROUPS = {
         "PID_ALL",
         "PID_EXTRUDERS",
         "PID_BED",
+        "MAINTENANCE_STATUS",
         "LNLOS",
     ],
 }
