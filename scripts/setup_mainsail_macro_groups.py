@@ -60,6 +60,7 @@ GROUPS = {
         "PID_EXTRUDERS",
         "PID_BED",
         "MAINTENANCE_STATUS",
+        "SUPPORT_INFO",
         "LNLOS",
     ],
 }
