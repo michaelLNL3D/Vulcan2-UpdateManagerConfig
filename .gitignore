@@ -13,3 +13,6 @@ docs/
 scripts/*
 !scripts/setup_mainsail_macro_groups.py
 tests/
+!tests/
+tests/*
+!tests/test_e2_offset_test_macro.py
