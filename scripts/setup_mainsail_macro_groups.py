@@ -61,6 +61,7 @@ GROUPS = {
         "PID_BED",
         "MAINTENANCE_STATUS",
         "SUPPORT_INFO",
+        "RUNOUT_TOOLHEAD_SWAP_SELECTOR",
         "LNLOS",
     ],
 }
