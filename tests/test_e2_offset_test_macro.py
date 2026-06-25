@@ -19,7 +19,7 @@ class E2OffsetTestMacroTests(unittest.TestCase):
     def test_macro_accepts_filament_input_and_heats_both_tools(self) -> None:
         text = self.macro_text()
 
-        self.assertIn("[gcode_macro E2_OFFSET_TEST]", text)
+        self.assertIn("[gcode_macro IDEX_OFFSET_TEST]", text)
         self.assertIn("FILAMENT=<PLA|PETG|ABS|ASA|TPU|NYLON|PC>", text)
         self.assertIn("params.FILAMENT|default(\"PLA\")|upper", text)
         self.assertIn("BED_TEMP", text)
@@ -78,7 +78,21 @@ class E2OffsetTestMacroTests(unittest.TestCase):
                     if isinstance(target, ast.Name) and target.id == "GROUPS":
                         groups = ast.literal_eval(node.value)
         self.assertIsNotNone(groups)
-        self.assertIn("E2_OFFSET_TEST", groups["IDEX"])
+        self.assertIn("IDEX_OFFSET_TEST", groups["IDEX"])
+
+    def test_macro_names_are_valid_for_klipper_dispatcher(self) -> None:
+        cfg_files = sorted((BASE / "macros").glob("*.cfg"))
+        cfg_files += [BASE / "scripts" / "setup_mainsail_macro_groups.py"]
+        invalid_names = []
+
+        macro_pattern = re.compile(r"^\[gcode_macro\s+([^\]]+)\]", re.MULTILINE)
+        for cfg_file in cfg_files:
+            text = cfg_file.read_text()
+            for name in macro_pattern.findall(text):
+                if re.search(r"\d(?=.*\D)", name):
+                    invalid_names.append(f"{cfg_file.relative_to(BASE)}:{name}")
+
+        self.assertEqual([], invalid_names)
 
 
 if __name__ == "__main__":

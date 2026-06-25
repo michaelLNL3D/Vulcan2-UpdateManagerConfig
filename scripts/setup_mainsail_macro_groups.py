@@ -54,7 +54,7 @@ GROUPS = {
         "ACTIVATE_TOOLCHANGER_MODE",
         "IDEX_OFFSET_PANEL",
         "SHOW_IDEX_OFFSETS",
-        "E2_OFFSET_TEST",
+        "IDEX_OFFSET_TEST",
     ],
     "Utilities": [
         "PID_ALL",
