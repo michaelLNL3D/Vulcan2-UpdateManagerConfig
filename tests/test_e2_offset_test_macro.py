@@ -10,6 +10,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parents[1]
 MACRO = BASE / "macros" / "E2OffsetTest.cfg"
 GROUP_SCRIPT = BASE / "scripts" / "setup_mainsail_macro_groups.py"
+KLIPPERSCREEN = BASE / "Klipperscreen_LNL.conf"
 
 
 class E2OffsetTestMacroTests(unittest.TestCase):
@@ -20,6 +21,7 @@ class E2OffsetTestMacroTests(unittest.TestCase):
         text = self.macro_text()
 
         self.assertIn("[gcode_macro IDEX_OFFSET_TEST]", text)
+        self.assertIn("[gcode_macro _IDEX_OFFSET_TEST_START]", text)
         self.assertIn("FILAMENT=<PLA|PETG|ABS|ASA|TPU|NYLON|PC>", text)
         self.assertIn("params.FILAMENT|default(\"PLA\")|upper", text)
         self.assertIn("BED_TEMP", text)
@@ -32,6 +34,23 @@ class E2OffsetTestMacroTests(unittest.TestCase):
         self.assertIn("M109 T1 S{hotend}", text)
         self.assertIn("SET_GCODE_VARIABLE MACRO=_TOOL_TEMPS VARIABLE=t0 VALUE={hotend}", text)
         self.assertIn("SET_GCODE_VARIABLE MACRO=_TOOL_TEMPS VARIABLE=t1 VALUE={hotend}", text)
+
+    def test_public_macro_prompts_for_filament_before_starting(self) -> None:
+        text = self.macro_text()
+
+        public_body = text.split("[gcode_macro IDEX_OFFSET_TEST]", 1)[1].split(
+            "[gcode_macro _IDEX_OFFSET_TEST_START]", 1
+        )[0]
+        self.assertIn("{% if params.FILAMENT is defined %}", public_body)
+        self.assertIn("_IDEX_OFFSET_TEST_START {rawparams}", public_body)
+        self.assertIn("action:prompt_begin E2 Offset Test", public_body)
+        self.assertIn("action:prompt_text Select the loaded filament to start the test.", public_body)
+        for filament in ["PLA", "PETG", "ABS", "ASA", "TPU", "NYLON", "PC"]:
+            self.assertIn(
+                f"action:prompt_button {filament}|_IDEX_OFFSET_TEST_START FILAMENT={filament}",
+                public_body,
+            )
+        self.assertIn("action:prompt_footer_button Cancel|_PROMPT_CLOSE|error", public_body)
 
     def test_macro_opens_offset_panel_and_starts_with_e1(self) -> None:
         text = self.macro_text()
@@ -79,6 +98,13 @@ class E2OffsetTestMacroTests(unittest.TestCase):
                         groups = ast.literal_eval(node.value)
         self.assertIsNotNone(groups)
         self.assertIn("IDEX_OFFSET_TEST", groups["IDEX"])
+
+    def test_macro_is_available_from_klipperscreen_idex_menu(self) -> None:
+        text = KLIPPERSCREEN.read_text()
+
+        self.assertIn("[menu __main IDEX offsettest]", text)
+        self.assertIn("name: E2 Offset Test", text)
+        self.assertIn('params: {"script":"IDEX_OFFSET_TEST"}', text)
 
     def test_macro_names_are_valid_for_klipper_dispatcher(self) -> None:
         cfg_files = sorted((BASE / "macros").glob("*.cfg"))
