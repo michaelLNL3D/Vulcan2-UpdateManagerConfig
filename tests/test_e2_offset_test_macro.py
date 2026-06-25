@@ -22,7 +22,7 @@ class E2OffsetTestMacroTests(unittest.TestCase):
 
         self.assertIn("[gcode_macro IDEX_OFFSET_TEST]", text)
         self.assertIn("[gcode_macro _IDEX_OFFSET_TEST_START]", text)
-        self.assertIn("FILAMENT=<PLA|PETG|ABS|ASA|TPU|NYLON|PC>", text)
+        self.assertIn("FILAMENT=<PLA|PETG|ABS>", text)
         self.assertIn("params.FILAMENT|default(\"PLA\")|upper", text)
         self.assertIn("BED_TEMP", text)
         self.assertIn("HOTEND_TEMP", text)
@@ -45,11 +45,14 @@ class E2OffsetTestMacroTests(unittest.TestCase):
         self.assertIn("_IDEX_OFFSET_TEST_START {rawparams}", public_body)
         self.assertIn("action:prompt_begin E2 Offset Test", public_body)
         self.assertIn("action:prompt_text Select the loaded filament to start the test.", public_body)
-        for filament in ["PLA", "PETG", "ABS", "ASA", "TPU", "NYLON", "PC"]:
+        for filament in ["PLA", "PETG", "ABS"]:
             self.assertIn(
                 f"action:prompt_button {filament}|_IDEX_OFFSET_TEST_START FILAMENT={filament}",
                 public_body,
             )
+        for filament in ["ASA", "TPU", "NYLON", "PC"]:
+            self.assertNotIn(f"FILAMENT={filament}", public_body)
+            self.assertNotIn(f'material == "{filament}"', text)
         self.assertIn("action:prompt_footer_button Cancel|_PROMPT_CLOSE|error", public_body)
 
     def test_macro_opens_offset_panel_and_starts_with_e1(self) -> None:
