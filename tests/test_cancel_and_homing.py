@@ -60,6 +60,14 @@ class CancelPrintProbeFixTests(unittest.TestCase):
         self.assertIn("G28", body)
         self.assertIn("_APPLY_DUAL_MATERIAL_MODE", body)
 
+    def test_restore_idex_mode_dual_material_does_not_full_home(self) -> None:
+        body = macro_body(IDEX.read_text(), "_RESTORE_IDEX_MODE")
+        commands = [line.split("#", 1)[0].strip() for line in body.splitlines()]
+        # Runs at the end of print start, when the probe is already removed —
+        # must restore dual-material mode WITHOUT a probe-homing full G28.
+        self.assertNotIn("ACTIVATE_DUAL_MATERIAL_MODE", commands)
+        self.assertIn("_APPLY_DUAL_MATERIAL_MODE", commands)
+
 
 class HomingSingleLiftTests(unittest.TestCase):
     def test_safe_z_home_zhop_disabled(self) -> None:
