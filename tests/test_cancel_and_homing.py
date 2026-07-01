@@ -70,11 +70,17 @@ class CancelPrintProbeFixTests(unittest.TestCase):
 
 
 class HomingSingleLiftTests(unittest.TestCase):
-    def test_safe_z_home_zhop_disabled(self) -> None:
+    def test_safe_z_home_zhop_enabled_for_probe_pickup(self) -> None:
         text = SAFEHOME.read_text()
-        # z_hop is disabled so G28.1 Z does not add a second lift on a re-home.
-        self.assertRegex(text, r"(?m)^\s*z_hop:\s*0\b")
-        self.assertNotRegex(text, r"(?m)^\s*z_hop:\s*(?!0\b)\d")
+        # DECISION CHANGE (klicky home-dock): z_hop RE-ENABLED to 15. PROBE_PICKUP
+        # homes X only (probe not attached), which takes G28's plain "G28.1 {axes}"
+        # path — no explicit lift — and Z is UNHOMED, so a macro-level G1 Z+ is
+        # impossible without [force_move]. z_hop is the only mechanism that lifts
+        # the unhomed Z before the carriage traverses to the dock, clearing the
+        # blocker/bed on a cold, low-Z start. Trade-off: a second lift on a
+        # Z-inclusive re-home (alongside the G28 macro's explicit G1 Z15) — extra
+        # Z travel only. See macros/safehome.cfg for the full rationale.
+        self.assertRegex(text, r"(?m)^\s*z_hop:\s*15\b")
 
     def test_g28_macro_keeps_single_explicit_lift(self) -> None:
         body = macro_body(EUCLID.read_text(), "G28")

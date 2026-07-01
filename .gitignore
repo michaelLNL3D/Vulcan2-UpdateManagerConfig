@@ -17,3 +17,4 @@ tests/
 tests/*
 !tests/test_e2_offset_test_macro.py
 !tests/test_cancel_and_homing.py
+!tests/test_probe_dock.py
