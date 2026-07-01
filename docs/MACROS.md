@@ -107,10 +107,87 @@ flowchart LR
 
 ---
 
+# 0. Foundations (prerequisites) — start here
+
+These are the **leaf macros every other flow calls**. Understand them first; the
+subsystem sections (§1–§6) then compose them into the real routines.
+
+**Dependency tiers (read bottom-up):**
+
+```mermaid
+flowchart TD
+    T2["Tier 2 · Orchestrators (user/slicer-facing)<br/>PRINT_START · PRINT_START_PROBED · END_PRINT · CANCEL_PRINT<br/>M600 · copy/mirror/dual activations · IDEX_OFFSET_TEST"]
+    T1["Tier 1 · Core operations (§1–§4 building blocks)<br/>G28 · T0/T1 · PROBE_PICKUP/DROPOFF · mesh &amp; screws guards<br/>LOAD/UNLOAD · _RUNOUT_SWITCH_AND_RESUME"]
+    T0["Tier 0 · Foundations (this section)<br/>state holders · _SAFETY_STOP · _PROMPT_CLOSE · HOME_IF_NOT<br/>M109 · CLEAR_GCODE_OFFSETS · _APPLY_INPUT_SHAPER · PROBEON/OFF"]
+    T2 -->|calls| T1 -->|calls| T0
+```
+
+**Reading order:** this section → §1 probe/homing → §2 IDEX → §3 print lifecycle →
+§4 filament → §5 heaters/tuning → §6 helpers. The orchestrators in §3 sit at the top
+and pull in everything below them.
+
+## Tier 0a — State holders
+
+No-op bodies; other macros read their `variable_*`. (Subsystem-local holders
+`_PSP_STATE`, `_RUNOUT_STATE`, `_IDEX_PANEL_STATE` are documented with their flows.)
+
+- **`LNLOS`** — *_host_deps.cfg* — the **per-printer settings holder**: dock geometry
+  (`probe_dock_sense_xoffset`, `probe_dock_release`, `probe_dock_scrape_drop`,
+  `probe_pickup_zraise`), PID targets, `standby_delta`. **Edit this for your unit.**
+  Read by the dock macros, PID macros, and `_TOOL_TEMPS` seeding.
+- **`_IDEX_MODE`** — *idex.cfg* — `idex_mode` = **0** dual · **1** copy · **2** mirror.
+  Set via `_IDEX_MODE MODE=<n>` (invalid → 0). Read by nearly every IDEX/print/runout guard.
+- **`_TOOL_TEMPS`** (+ `_SYNC_STANDBY_DELTA`) — *PrintStartEnd.cfg* — per-tool print
+  temps `t0`/`t1` + `standby_delta`. `T0`/`T1` set the idle nozzle to `temp − delta`.
+  `_SYNC_STANDBY_DELTA` (a `delayed_gcode`) seeds `standby_delta` from `LNLOS` at startup.
+- **`_IS_SETTINGS`** — *inputshaper.cfg* — per-carriage input-shaper freq/type (X differs
+  between carriages; Y is shared).
+
+## Tier 0b — Halt & dialog primitives
+
+- **`_SAFETY_STOP`** — *_host_deps.cfg* — one call, **dual-surface** halt:
+  `RESPOND TYPE=error` (Mainsail console) **+** an `action:prompt` popup (KlipperScreen),
+  then `_SAFETY_RAISE`. Every guard uses this so the message shows on both screens.
+- **`_SAFETY_RAISE`** — *_host_deps.cfg* — the actual `action_raise_error`, in a second
+  macro so it renders *after* the messages (raising in `_SAFETY_STOP` would suppress them).
+- **`_PROMPT_CLOSE`** — *idex.cfg* — `action:prompt_end`; the shared "close dialog" for
+  every KlipperScreen prompt.
+
+## Tier 0c — Universal helpers
+
+- **`HOME_IF_NOT`** — *_host_deps.cfg* — `G28` only if `homed_axes != "xyz"` (a full home
+  needs the probe).
+- **`M109`** — *m109_fast_wait.cfg* — **fast wait**: set target, then `TEMPERATURE_WAIT
+  MINIMUM`, returning as soon as temp is reached (skips the PID settle tail). Called by
+  every heat-wait. *(Flowchart + detail in §5.)*
+- **`CLEAR_GCODE_OFFSETS`** — *idex.cfg* — `SET_GCODE_OFFSET X=0 Y=0 Z=0`; used by the
+  mode switches (both heads share one Z gantry).
+- **`_APPLY_INPUT_SHAPER CARRIAGE=<0|1>`** — *inputshaper.cfg* — apply that carriage's X
+  shaper; **no-ops** if `[input_shaper]` is off, so always safe. Called by `T0`/`T1`.
+
+## Tier 0d — Probe verification
+
+Used by the dock routines (§1) and the print flows (§3). All two-stage (fresh query).
+
+- **`PROBEON`** — *_host_deps.cfg* — `QUERY_PROBE` → `_PROBE_VERIFY EXPECT=attached`.
+- **`PROBEOFF`** — *_host_deps.cfg* — `QUERY_PROBE` → `_PROBE_VERIFY EXPECT=docked`.
+- **`_PROBE_VERIFY`** — *_host_deps.cfg* — compares the fresh `last_query` to `EXPECT`;
+  echoes "verified" or fires `_SAFETY_STOP`.
+
+## Tier 0e — Client config
+
+- **`_CLIENT_VARIABLE`** — *mainsail_client.cfg* — configures mainsail's client macros:
+  routes cancel → `_VULCAN_CANCEL_CLEANUP` (IDEX-aware), disables mainsail's own park,
+  sets pause z-hop/park, enables firmware retraction. Overridable from `local/`.
+
+---
+
 # 1. Probe dock & guarded homing
 
 Files: `EuclidUtilities.cfg`, `macros/_host_deps.cfg`. This is the safety-critical
-core: homing, bed leveling guards, and the probe dock routines.
+core: homing, bed leveling guards, and the probe dock routines. *(Its probe/safety
+helpers — `PROBEON`/`PROBEOFF`/`_PROBE_VERIFY`, `HOME_IF_NOT`, `_SAFETY_STOP`/`_SAFETY_RAISE`,
+`LNLOS` — are in **§0 Foundations**.)*
 
 ### `G28` — *EuclidUtilities.cfg* — guarded homing; Z homes via the probe
 
@@ -218,23 +295,11 @@ Identical guard pattern to `BED_MESH_CALIBRATE` (homed pre-check → fresh
 
 Same as `_Prepare_BedMesh` but runs `SCREWS_TILT_CALCULATE`.
 
-### Probe helpers (`_host_deps.cfg`)
+### Probe & safety helpers → see **§0 Foundations**
 
-- **`PROBEON`** → `QUERY_PROBE` → `_PROBE_VERIFY EXPECT=attached`. Verifies pickup;
-  `_SAFETY_STOP` if still reads detached.
-- **`PROBEOFF`** → `QUERY_PROBE` → `_PROBE_VERIFY EXPECT=docked`. Verifies dropoff.
-- **`_PROBE_VERIFY`** *[internal]* — compares fresh `last_query` to `EXPECT`; echoes
-  "verified" or fires `_SAFETY_STOP`.
-- **`HOME_IF_NOT`** — `G28` only if `homed_axes != "xyz"`. (Full home → needs probe.)
-- **`_SAFETY_STOP`** — one-call halt visible on **both** surfaces: `RESPOND TYPE=error`
-  (Mainsail console) **and** an `action:prompt` popup (KlipperScreen), then calls
-  `_SAFETY_RAISE`. Split because `action_raise_error` fires at render time and would
-  otherwise suppress the messages.
-- **`_SAFETY_RAISE`** *[internal]* — the actual `action_raise_error` (renders after
-  the messages were sent, so the stream halts *after* the user sees why).
-- **`LNLOS`** — no-op **settings holder**. Read-only variables consumed elsewhere:
-  probe dock geometry (`probe_dock_sense_xoffset/release/scrape_drop`,
-  `probe_pickup_zraise`), PID targets, `standby_delta`. **Edit per printer.**
+`PROBEON` / `PROBEOFF` / `_PROBE_VERIFY` (probe verification), `HOME_IF_NOT`,
+`_SAFETY_STOP` / `_SAFETY_RAISE`, and the `LNLOS` settings holder are documented in
+§0 — they're used across every subsystem, not just here.
 
 ---
 
@@ -245,11 +310,10 @@ parking, tool offsets, and the offset-tuning UI.
 
 ## Modes
 
-### `_IDEX_MODE` — *idex.cfg* — mode state holder
+### `_IDEX_MODE` — *idex.cfg* — mode state holder → see **§0 Foundations**
 
-Holds `variable_idex_mode` (**0** dual-material · **1** copy · **2** mirror).
-`_IDEX_MODE MODE=<n>` validates and stores it (invalid → reverts to 0). Everything
-that must behave differently per mode reads `printer["gcode_macro _IDEX_MODE"].idex_mode`.
+`idex_mode` = 0 dual · 1 copy · 2 mirror; every per-mode branch reads it. `CLEAR_GCODE_OFFSETS`
+(also used below) is likewise in §0.
 
 ### `ACTIVATE_DUAL_MATERIAL_MODE` / `_APPLY_DUAL_MATERIAL_MODE` — *idex.cfg*
 
@@ -367,11 +431,9 @@ shows as a visible seam. Ends with `END_PRINT`.
 
 File: `macros/PrintStartEnd.cfg`. Start (two variants), end, and IDEX-aware cancel.
 
-### `_TOOL_TEMPS` (+ `_SYNC_STANDBY_DELTA`) — *PrintStartEnd.cfg · [internal]*
+### `_TOOL_TEMPS` (+ `_SYNC_STANDBY_DELTA`) — *PrintStartEnd.cfg · [internal]* → see **§0 Foundations**
 
-State holder for per-tool print temps (`t0`, `t1`) and `standby_delta`. `T0`/`T1`
-read it to set the idle nozzle to `print_temp − delta`. `_SYNC_STANDBY_DELTA` is a
-`delayed_gcode` that seeds `standby_delta` from `LNLOS` at startup.
+Per-tool print temps + standby delta, read by `T0`/`T1` and the start flows.
 
 ### `ASSERT_PROBE_DOCKED` → `_ASSERT_PROBE_DOCKED_CHECK` — *PrintStartEnd.cfg*
 
@@ -575,20 +637,16 @@ Preheat, then `PID_CALIBRATE` the relevant heater(s) to the targets in `LNLOS`
 
 # 6. Settings / helpers / UI / maintenance
 
-- **`LNLOS`** — *_host_deps.cfg* — the per-printer **settings holder** (dock geometry,
-  PID targets, standby delta). See §1. Edit this for your unit.
-- **`_SAFETY_STOP` / `_SAFETY_RAISE`** — *_host_deps.cfg* — dual-surface halt (console
-  + touchscreen) then raise. See §1.
-- **`HOME_IF_NOT`** — *_host_deps.cfg* — full `G28` only if not already `xyz` homed.
+Several helpers here are **prerequisites** covered in §0 Foundations: `LNLOS`,
+`_SAFETY_STOP` / `_SAFETY_RAISE`, `HOME_IF_NOT`, and `_CLIENT_VARIABLE`. The
+maintenance/support helpers unique to this section:
+
 - **`_MAINTENANCE_TRACKER`** — *_host_deps.cfg · [internal]* — called by `END_PRINT`;
   accumulates lifetime print count + hours into `save_variables`.
 - **`MAINTENANCE_STATUS`** — *_host_deps.cfg* — echo lifetime prints / hours.
 - **`SUPPORT_INFO`** — *support.cfg* — customer support card (console + touchscreen),
   with live lifetime prints/hours. Keep values in sync with the KlipperScreen Support
   menu labels (menu names can't interpolate state).
-- **`_CLIENT_VARIABLE`** — *mainsail_client.cfg* — configures mainsail's client macros:
-  routes cancel to `_VULCAN_CANCEL_CLEANUP` (IDEX-aware), disables mainsail's own park,
-  sets pause park/z-hop, enables firmware retraction. Overridable from `local/`.
 
 > **Not macros (config only):** `verifyheaters.cfg` (`[verify_heater]` sections) and
 > `filamentsensors.cfg`'s `[filament_switch_sensor]` blocks — included here only for
