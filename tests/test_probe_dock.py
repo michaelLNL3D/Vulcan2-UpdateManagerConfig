@@ -99,6 +99,13 @@ class ProbeDropoffTests(unittest.TestCase):
         # engage_z must be clamped >= stepper_z.position_min (never command below).
         self.assertIn("stepper_z.position_min", strip)
 
+    def test_scrape_height_is_below_the_sensed_point(self) -> None:
+        strip = macro_body(EUCLID.read_text(), "_PROBE_DROPOFF_STRIP")
+        # The switch trips at the blocker top, but the scraping feature engages
+        # ~probe_dock_scrape_drop mm LOWER, so engagement = sensed - scrape_drop.
+        self.assertIn("probe_dock_scrape_drop", strip)
+        self.assertRegex(strip, r"last_z_result\|float\s*-\s*scrape_drop")
+
     def test_dropoff_verifies_detach(self) -> None:
         self.assertIn("PROBEOFF", commands(macro_body(EUCLID.read_text(), "_PROBE_DROPOFF_STRIP")))
 
@@ -113,7 +120,7 @@ class DockConfigTests(unittest.TestCase):
     def test_lnlos_defines_new_dock_vars(self) -> None:
         text = HOST_DEPS.read_text()
         for var in ("probe_dock_sense_xoffset", "probe_dock_release",
-                    "probe_dock_zoffset", "probe_pickup_zraise"):
+                    "probe_dock_scrape_drop", "probe_pickup_zraise"):
             self.assertRegex(text, r"(?m)^\s*variable_" + var + r"\s*:")
 
 
